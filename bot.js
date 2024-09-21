@@ -1297,122 +1297,223 @@
 
 /**********************    наступний варіант */
 
+// require("dotenv").config();
+// const axios = require("axios"); // Додаємо axios
+// const TelegramBot = require("node-telegram-bot-api");
+// const express = require("express");
+// const app = express();
+// const port = process.env.PORT || 3000;
+
+// const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+// const alertChannelId = process.env.ALERT_CHANNEL_ID; // ID каналу для сповіщень
+
+// // Оновлена структура зберігання стану тривог
+// let activeAlerts = {};
+
+// // Функція для отримання сповіщень через API
+// async function getThreatAlerts() {
+//   try {
+//     const res = await axios.get("https://api.ukrainealarm.com/api/v3/alerts", {
+//       headers: {
+//         accept: "application/json",
+//         Authorization: process.env.ALARM_API_KEY,
+//       },
+//     });
+
+//     const alerts = res.data;
+//     const currentTime = new Date().toLocaleString();
+//     // alerts.forEach((alert) => {
+//     //   console.log(
+//     //     "отримуємо повідомлення: ",
+//     //     alert.regionName, // Назва регіону
+//     //     alert.lastUpdate // Останнє оновлення
+//     //   );
+//     // });
+
+//     for (const alert of alerts) {
+//       const regionName = alert.regionName;
+//       const regionId = alert.regionId;
+//       const alertKey = `${regionName}-${regionId}`;
+//       const lastUpdate = alert.lastUpdate;
+//       const threatTypes = alert.activeAlerts
+//         ? alert.activeAlerts.map((a) => a.type).join(", ")
+//         : null;
+
+//       // Перевірка на тривогу
+//       if (alert.activeAlerts && alert.activeAlerts.length > 0) {
+//         // Якщо немає запису про тривогу або оновлення змінилось
+//         if (
+//           !activeAlerts[alertKey] ||
+//           activeAlerts[alertKey].lastUpdate !== lastUpdate
+//         ) {
+//           activeAlerts[alertKey] = {
+//             startTime: Date.now(),
+//             isActive: true,
+//             lastUpdate: lastUpdate,
+//           };
+
+//           console.log(`⚠️ Загроза в регіоні: ${regionName}`);
+//           console.log(`Тип загрози: ${threatTypes}`);
+//           console.log(`Час отримання: ${currentTime}`);
+//           console.log("===========================");
+
+//           // Відправляємо повідомлення про загрозу
+//           await sendMessageWithRetry(
+//             alertChannelId,
+//             `‼️ <b>Загроза в регіоні:</b> ${regionName}\nТип загрози: ${threatTypes}`
+//           );
+//         }
+//       } else if (activeAlerts[alertKey]) {
+//         // Якщо тривога вже завершилась (немає активних сповіщень)
+//         if (activeAlerts[alertKey].isActive) {
+//           console.log(`✅ Відбій тривоги в регіоні: ${regionName}`);
+//           console.log(`Час: ${new Date().toLocaleString()}`);
+//           console.log("===========================");
+
+//           await sendMessageWithRetry(
+//             alertChannelId,
+//             `✅ <b>Відбій тривоги в регіоні:</b> ${regionName}`
+//           );
+
+//           // Оновлюємо стан тривоги як неактивний
+//           activeAlerts[alertKey].isActive = false;
+//         }
+//       }
+//     }
+//   } catch (error) {
+//     console.error(`Помилка при отриманні даних з API: ${error}`);
+//   }
+// }
+
+// // Функція для відправлення повідомлень з повторною спробою
+// async function sendMessageWithRetry(chatId, text, retries = 5) {
+//   while (retries > 0) {
+//     try {
+//       await bot.sendMessage(chatId, text, { parse_mode: "HTML" });
+//       console.log("Повідомлення успішно відправлено");
+//       break;
+//     } catch (err) {
+//       console.error(`Помилка при відправці повідомлення: ${err}`);
+//       retries--;
+//       if (retries > 0) {
+//         console.log(`Повторна спроба... (${retries} залишилося)`);
+//         await new Promise((resolve) => setTimeout(resolve, 5000));
+//       } else {
+//         console.error("Не вдалося відправити повідомлення після кількох спроб");
+//       }
+//     }
+//   }
+// }
+
+// // Запускаємо перевірку кожні 60 секунд
+// setInterval(getThreatAlerts, 60 * 1000);
+
+// // Запуск сервера
+// app.get("/", (req, res) => {
+//   res.send("Сервер бота працює!");
+// });
+
+// app.listen(port, () => {
+//   console.log(`Сервер запущено на порту ${port}`);
+// });
+
+/*****************  через вебхуки , вивід регіонID - ДОБРЕ !!! */
+/*********** при перезавантаженні не відображає всі тривоги і відбої наново */
+/***********  */
+
 require("dotenv").config();
-const axios = require("axios"); // Додаємо axios
+const axios = require("axios");
 const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
+
+// Ініціалізуємо бота
+const token = process.env.TELEGRAM_BOT_TOKEN;
+const alertChannelId = String(process.env.ALERT_CHANNEL_ID);
+const bot = new TelegramBot(token);
+
+// Ініціалізуємо сервер
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
-const alertChannelId = process.env.ALERT_CHANNEL_ID; // ID каналу для сповіщень
+// Для парсингу JSON
+app.use(express.json());
 
-// Оновлена структура зберігання стану тривог
-let activeAlerts = {};
+// Обробник вебхука
+app.post("/webhook", (req, res) => {
+  const alerts = req.body; // Отримуємо дані з вебхука
 
-// Функція для отримання сповіщень через API
-async function getThreatAlerts() {
-  try {
-    const res = await axios.get("https://api.ukrainealarm.com/api/v3/alerts", {
-      headers: {
-        accept: "application/json",
-        Authorization: process.env.ALARM_API_KEY,
-      },
+  console.log("Отримано дані з вебхука:", alerts);
+
+  // Перевіряємо, чи є дані масивом, якщо ні, обробляємо як об'єкт
+  if (Array.isArray(alerts)) {
+    alerts.forEach((alert) => {
+      processAlert(alert);
     });
+  } else {
+    processAlert(alerts); // Обробляємо один об'єкт
+  }
 
-    const alerts = res.data;
-    const currentTime = new Date().toLocaleString();
-    // alerts.forEach((alert) => {
-    //   console.log(
-    //     "отримуємо повідомлення: ",
-    //     alert.regionName, // Назва регіону
-    //     alert.lastUpdate // Останнє оновлення
-    //   );
-    // });
+  res.sendStatus(200); // Повертаємо статус 200 OK
+});
 
-    for (const alert of alerts) {
-      const regionName = alert.regionName;
-      const regionId = alert.regionId;
-      const alertKey = `${regionName}-${regionId}`;
-      const lastUpdate = alert.lastUpdate;
-      const threatTypes = alert.activeAlerts
-        ? alert.activeAlerts.map((a) => a.type).join(", ")
-        : null;
+// Функція для обробки тривоги
+function processAlert(alert) {
+  const regionId = alert.regionId;
+  const alarmType = alert.alarmType;
 
-      // Перевірка на тривогу
-      if (alert.activeAlerts && alert.activeAlerts.length > 0) {
-        // Якщо немає запису про тривогу або оновлення змінилось
-        if (
-          !activeAlerts[alertKey] ||
-          activeAlerts[alertKey].lastUpdate !== lastUpdate
-        ) {
-          activeAlerts[alertKey] = {
-            startTime: Date.now(),
-            isActive: true,
-            lastUpdate: lastUpdate,
-          };
+  console.log(
+    `Обробляємо тривогу для регіону: ${regionId}, тип тривоги: ${alarmType}`
+  );
 
-          console.log(`⚠️ Загроза в регіоні: ${regionName}`);
-          console.log(`Тип загрози: ${threatTypes}`);
-          console.log(`Час отримання: ${currentTime}`);
-          console.log("===========================");
+  const createdAt = new Date(alert.createdAt).toLocaleString();
 
-          // Відправляємо повідомлення про загрозу
-          await sendMessageWithRetry(
-            alertChannelId,
-            `‼️ <b>Загроза в регіоні:</b> ${regionName}\nТип загрози: ${threatTypes}`
-          );
-        }
-      } else if (activeAlerts[alertKey]) {
-        // Якщо тривога вже завершилась (немає активних сповіщень)
-        if (activeAlerts[alertKey].isActive) {
-          console.log(`✅ Відбій тривоги в регіоні: ${regionName}`);
-          console.log(`Час: ${new Date().toLocaleString()}`);
-          console.log("===========================");
+  if (alert.status === "Activate") {
+    // Якщо тривога активна
+    bot.sendMessage(
+      alertChannelId,
+      `‼️ <b>Загроза в регіоні з ID ${regionId}</b>\nТип загрози: ${alarmType}\nЧас: ${createdAt}`,
+      { parse_mode: "HTML" }
+    );
+  } else if (alert.status === "DEACTIVATE") {
+    // Якщо тривога відбита
+    bot.sendMessage(
+      alertChannelId,
+      `✅ <b>Відбій тривоги в регіоні з ID ${regionId}</b>\nТип загрози: ${alarmType}\nЧас: ${createdAt}`,
+      { parse_mode: "HTML" }
+    );
+  }
+}
 
-          await sendMessageWithRetry(
-            alertChannelId,
-            `✅ <b>Відбій тривоги в регіоні:</b> ${regionName}`
-          );
-
-          // Оновлюємо стан тривоги як неактивний
-          activeAlerts[alertKey].isActive = false;
-        }
+// Налаштування вебхука
+async function setWebhook() {
+  const webhookUrl = `${process.env.NGROK_URL}/webhook`; // Ваш Ngrok URL
+  try {
+    const response = await axios.post(
+      "https://api.ukrainealarm.com/api/v3/webhook",
+      {
+        webHookUrl: webhookUrl,
+      },
+      {
+        headers: {
+          accept: "text/plain",
+          Authorization: process.env.ALARM_API_KEY,
+        },
       }
-    }
+    );
+    console.log(`Вебхук налаштовано на: ${webhookUrl}`, response.data);
   } catch (error) {
-    console.error(`Помилка при отриманні даних з API: ${error}`);
+    console.error(
+      "Помилка при налаштуванні вебхука:",
+      error.response?.data || error.message
+    );
   }
 }
 
-// Функція для відправлення повідомлень з повторною спробою
-async function sendMessageWithRetry(chatId, text, retries = 5) {
-  while (retries > 0) {
-    try {
-      await bot.sendMessage(chatId, text, { parse_mode: "HTML" });
-      console.log("Повідомлення успішно відправлено");
-      break;
-    } catch (err) {
-      console.error(`Помилка при відправці повідомлення: ${err}`);
-      retries--;
-      if (retries > 0) {
-        console.log(`Повторна спроба... (${retries} залишилося)`);
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-      } else {
-        console.error("Не вдалося відправити повідомлення після кількох спроб");
-      }
-    }
-  }
-}
-
-// Запускаємо перевірку кожні 60 секунд
-setInterval(getThreatAlerts, 60 * 1000);
-
-// Запуск сервера
-app.get("/", (req, res) => {
-  res.send("Сервер бота працює!");
+// Запускаємо сервер
+app.listen(PORT, () => {
+  console.log(`Сервер працює на порту ${PORT}`);
+  setWebhook(); // Налаштування вебхука при старті сервера
 });
 
-app.listen(port, () => {
-  console.log(`Сервер запущено на порту ${port}`);
-});
+/************** виводимо regionName - але треба знайти окремо */
+
