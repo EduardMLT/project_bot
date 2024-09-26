@@ -1421,10 +1421,120 @@
 /*********** при перезавантаженні не відображає всі тривоги і відбої наново */
 /***********  */
 
+// require("dotenv").config();
+// const axios = require("axios");
+// const TelegramBot = require("node-telegram-bot-api");
+// const express = require("express");
+// const path = require("path");
+
+// // Ініціалізуємо бота
+// const token = process.env.TELEGRAM_BOT_TOKEN;
+// const alertChannelId = String(process.env.ALERT_CHANNEL_ID);
+// const bot = new TelegramBot(token);
+
+// // Ініціалізуємо сервер
+// const app = express();
+// const PORT = process.env.PORT || 3000;
+
+// // Для парсингу JSON
+// app.use(express.json());
+
+// // Вказуємо папку для статичних файлів (включаючи favicon)
+// app.use(express.static(path.join(__dirname, 'public')));
+
+// app.get("/", (req, res) => {
+//    res.send("Сервер працює! Вебхук налаштований.");
+//  });
+
+//  // Обробник запиту для favicon
+// app.get("/favicon.ico", (req, res) => {
+//   res.sendFile(path.join(__dirname, 'public', 'favicon.ico')); // Повертаємо файл favicon
+// });
+
+// // Обробник вебхука
+// app.post("/webhook", (req, res) => {
+//   const alerts = req.body; // Отримуємо дані з вебхука
+
+//   console.log("Отримано дані з вебхука:", alerts);
+
+//   // Перевіряємо, чи є дані масивом, якщо ні, обробляємо як об'єкт
+//   if (Array.isArray(alerts)) {
+//     alerts.forEach((alert) => {
+//       processAlert(alert);
+//     });
+//   } else {
+//     processAlert(alerts); // Обробляємо один об'єкт
+//   }
+
+//   res.sendStatus(200); // Повертаємо статус 200 OK
+// });
+
+// // Функція для обробки тривоги
+// function processAlert(alert) {
+//   const regionId = alert.regionId;
+//   const alarmType = alert.alarmType;
+
+//   console.log(
+//     `Обробляємо тривогу для регіону: ${regionId}, тип тривоги: ${alarmType}`
+//   );
+
+//   const createdAt = new Date(alert.createdAt).toLocaleString();
+
+//   if (alert.status === "Activate") {
+//     // Якщо тривога активна
+//     bot.sendMessage(
+//       alertChannelId,
+//       `‼️ <b>Загроза в регіоні з ID ${regionId}</b>\nТип загрози: ${alarmType}\nЧас: ${createdAt}`,
+//       { parse_mode: "HTML" }
+//     );
+//   } else if (alert.status === "DEACTIVATE") {
+//     // Якщо тривога відбита
+//     bot.sendMessage(
+//       alertChannelId,
+//       `✅ <b>Відбій тривоги в регіоні з ID ${regionId}</b>\nТип загрози: ${alarmType}\nЧас: ${createdAt}`,
+//       { parse_mode: "HTML" }
+//     );
+//   }
+// }
+
+// // Налаштування вебхука
+// async function setWebhook() {
+//   const webhookUrl = `${process.env.NGROK_URL}/webhook`; // Ваш Ngrok URL
+//   try {
+//     const response = await axios.post(
+//       "https://api.ukrainealarm.com/api/v3/webhook",
+//       {
+//         webHookUrl: webhookUrl,
+//       },
+//       {
+//         headers: {
+//           accept: "text/plain",
+//           Authorization: process.env.ALARM_API_KEY,
+//         },
+//       }
+//     );
+//     console.log(`Вебхук налаштовано на: ${webhookUrl}`, response.data);
+//   } catch (error) {
+//     console.error(
+//       "Помилка при налаштуванні вебхука:",
+//       error.response?.data || error.message
+//     );
+//   }
+// }
+
+// // Запускаємо сервер
+// app.listen(PORT, () => {
+//   console.log(`Сервер працює на порту ${PORT}`);
+//   setWebhook(); // Налаштування вебхука при старті сервера
+// });
+
+/************** виводимо regionName - але треба знайти окремо */
+
 require("dotenv").config();
 const axios = require("axios");
 const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
+const path = require("path");
 
 // Ініціалізуємо бота
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -1438,47 +1548,186 @@ const PORT = process.env.PORT || 3000;
 // Для парсингу JSON
 app.use(express.json());
 
+// Вказуємо папку для статичних файлів (включаючи favicon)
+app.use(express.static(path.join(__dirname, "public")));
+
+app.get("/", (req, res) => {
+   res.send("Сервер працює! Вебхук налаштований.");
+ });
+
+// Обробник запиту для favicon
+app.get("/favicon.ico", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "favicon.ico")); // Повертаємо файл favicon
+});
+
+// Зберігаємо регіони у глобальний об'єкт
+let regionsCache = {};
+
+// Отримання інформації про регіони (області, райони, громади)
+
+async function fetchRegions() {
+  try {
+    const response = await axios.get(
+      "https://api.ukrainealarm.com/api/v3/regions",
+      {
+        headers: {
+          accept: "application/json",
+          Authorization: process.env.ALARM_API_KEY,
+        },
+      }
+    );
+
+    // Перевіряємо структуру відповіді
+    if (response.data) {
+      console.log("Отримані регіони:");
+      // console.log(response.data);
+      console.dir(response.data, { depth: null }); // Відображає всю структуру з усіма вкладеними об'єктами
+    } else {
+      console.error("Помилка: Дані відсутні в відповіді");
+    }
+  
+
+    if (Array.isArray(response.data.states)) {
+      response.data.states.forEach((region) => {
+        regionsCache[region.regionId] = {
+          name: region.regionName,
+          type: region.regionType,
+          id: region.regionId,
+          childrenDistrict:
+            region.regionChildIds.map((child) => ({
+              id: child.regionId,
+              name: child.regionName,
+            })) || [], // Переконайтеся, що тут зберігаються ID та назви
+        };
+      });
+
+      console.log("regionsCache регіони:");
+      // console.log(regionsCache);
+      console.dir(regionsCache, { depth: null }); // Відображає всю структуру з усіма вкладеними об'єктами
+    } else {
+      console.error("Помилка: Дані про регіони не є масивом");
+    }
+  } catch (error) {
+    console.error(
+      "Помилка при отриманні регіонів:",
+      error.response?.data || error.message
+    );
+  }
+}
+
+// Функція для отримання назви регіону за ID
+
+/*** 3 */
+// function getRegionNameById(regionId) {
+//   const region = regionsCache[regionId];
+
+//   if (!region) {
+//     return `ID: ${regionId}`;
+//   }
+
+//   if (region.regionChildIds && region.regionChildIds.length > 0) {
+//     const childRegions = region.regionChildIds
+//       .map((child) => {
+//         // Перевіряємо, чи child — це об'єкт, і отримуємо його назву
+//         if (child && child.regionName) {
+//           return `${child.regionName} (ID: ${child.regionId})`;
+//         }
+//         return `ID: ${child.regionId}`;
+//       })
+//       .join(", ");
+
+//     return `${region.regionName} (Райони/Громади: ${childRegions})`;
+//   }
+
+//   return region.regionName;
+// }
+
+/*** 2 */
+// function getRegionNameById(regionId) {
+//   const region = regionsCache[regionId];
+
+//   if (!region) {
+//     return `ID: ${regionId}`;
+//   }
+
+//   if (region.children.length > 0) {
+//     const childRegions = region.children
+//       .map((childId) => regionsCache[childId]?.name || `ID: ${childId}`)
+//       .filter((name) => name !== undefined) // Фільтруємо невизначені назви
+//       .join(", ");
+//     return `${region.name} (Райони/Громади: ${childRegions})`;
+//   }
+
+//   return region.name;
+// }
+
+/*** 1 */
+function getRegionNameById(regionId) {
+  const region = regionsCache[regionId];
+
+  if (!region) {
+    return `ID: ${regionId}`;
+  }
+
+  let childRegions = "";
+
+  // Перевіряємо, чи є діти і чи це масив
+  if (Array.isArray(region.children) && region.children.length > 0) {
+    childRegions = region.children
+      .map((child) => {
+        // Якщо child - це об'єкт, то беремо його дані
+        if (typeof child === "object") {
+          const childName = child.regionName;
+          const childId = child.regionId;
+          return `${childName} (ID: ${childId})`;
+        }
+        return `ID: ${child}`;
+      })
+      .join(", ");
+  }
+
+  return `${region.name} (Райони/Громади: ${childRegions})`;
+}
+
 // Обробник вебхука
 app.post("/webhook", (req, res) => {
-  const alerts = req.body; // Отримуємо дані з вебхука
+  const alerts = req.body;
 
   console.log("Отримано дані з вебхука:", alerts);
 
-  // Перевіряємо, чи є дані масивом, якщо ні, обробляємо як об'єкт
   if (Array.isArray(alerts)) {
     alerts.forEach((alert) => {
       processAlert(alert);
     });
   } else {
-    processAlert(alerts); // Обробляємо один об'єкт
+    processAlert(alerts);
   }
 
-  res.sendStatus(200); // Повертаємо статус 200 OK
+  res.sendStatus(200);
 });
 
 // Функція для обробки тривоги
 function processAlert(alert) {
   const regionId = alert.regionId;
+  const regionName = getRegionNameById(regionId);
   const alarmType = alert.alarmType;
 
   console.log(
-    `Обробляємо тривогу для регіону: ${regionId}, тип тривоги: ${alarmType}`
+    `Обробляємо тривогу для регіону: ${regionName} (ID: ${regionId}), тип тривоги: ${alarmType}`
   );
 
   const createdAt = new Date(alert.createdAt).toLocaleString();
 
   if (alert.status === "Activate") {
-    // Якщо тривога активна
     bot.sendMessage(
       alertChannelId,
-      `‼️ <b>Загроза в регіоні з ID ${regionId}</b>\nТип загрози: ${alarmType}\nЧас: ${createdAt}`,
+      `‼️ <b>Загроза в регіоні: ${regionName}</b>\nТип загрози: ${alarmType}\nЧас: ${createdAt}`,
       { parse_mode: "HTML" }
     );
   } else if (alert.status === "DEACTIVATE") {
-    // Якщо тривога відбита
     bot.sendMessage(
       alertChannelId,
-      `✅ <b>Відбій тривоги в регіоні з ID ${regionId}</b>\nТип загрози: ${alarmType}\nЧас: ${createdAt}`,
+      `✅ <b>Відбій тривоги в регіоні: ${regionName}</b>\nТип загрози: ${alarmType}\nЧас: ${createdAt}`,
       { parse_mode: "HTML" }
     );
   }
@@ -1486,7 +1735,7 @@ function processAlert(alert) {
 
 // Налаштування вебхука
 async function setWebhook() {
-  const webhookUrl = `${process.env.NGROK_URL}/webhook`; // Ваш Ngrok URL
+  const webhookUrl = `${process.env.NGROK_URL}/webhook`;
   try {
     const response = await axios.post(
       "https://api.ukrainealarm.com/api/v3/webhook",
@@ -1510,10 +1759,8 @@ async function setWebhook() {
 }
 
 // Запускаємо сервер
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Сервер працює на порту ${PORT}`);
-  setWebhook(); // Налаштування вебхука при старті сервера
+  await fetchRegions();
+  setWebhook();
 });
-
-/************** виводимо regionName - але треба знайти окремо */
-
